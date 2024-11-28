@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -19,8 +18,10 @@ int main() {
 
         // Read user input
         ssize_t bytes_read = read(STDIN_FILENO, input, sizeof(input) - 1);
+
+        // Handle <Ctrl>+D (EOF) or read error
         if (bytes_read <= 0) {
-            write(STDOUT_FILENO, "\nGoodbye!\n", 10);
+            write(STDOUT_FILENO, "\nBye bye...\n", 12);
             break;
         }
 
@@ -29,7 +30,7 @@ int main() {
 
         // Check for 'exit' command
         if (strcmp(input, "exit") == 0) {
-            write(STDOUT_FILENO, "Goodbye!\n", 9);
+            write(STDOUT_FILENO, "Bye bye...\n", 11);
             break;
         }
 
