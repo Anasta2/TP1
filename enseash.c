@@ -7,7 +7,7 @@
 
 int main() {
     // Welcome message
-    const char *welcome_message = "Welcome to ENSEA Tiny Shell.\nType 'exit' to quit.\n";
+    const char *welcome_message = "Congratulations! You just solved exercise 1.\nType 'exit' to quit.\n";
     write(STDOUT_FILENO, welcome_message, strlen(welcome_message));
 
     char input[1024];  // Buffer to store user input
