@@ -10,11 +10,17 @@ int main() {
     write(STDOUT_FILENO, welcome_message, strlen(welcome_message));
 
     char input[1024];  // Buffer to store user input
+    int last_status = 0;  // To store the status of the last command
 
     while (1) {
-        // Display prompt
-        const char *prompt = "enseash % ";
-        write(STDOUT_FILENO, prompt, strlen(prompt));
+        // Display prompt with return code or signal
+        if (WIFEXITED(last_status)) {
+            dprintf(STDOUT_FILENO, "enseash [exit:%d] %% ", WEXITSTATUS(last_status));
+        } else if (WIFSIGNALED(last_status)) {
+            dprintf(STDOUT_FILENO, "enseash [sign:%d] %% ", WTERMSIG(last_status));
+        } else {
+            write(STDOUT_FILENO, "enseash % ", 10);
+        }
 
         // Read user input
         ssize_t bytes_read = read(STDIN_FILENO, input, sizeof(input) - 1);
@@ -43,14 +49,18 @@ int main() {
 
         if (pid == 0) {
             // Child process: Execute the command
-            execlp(input, input, NULL);
+            // Special case for the "kill" command
+            if (strncmp(input, "kill", 4) == 0) {
+                execlp("/usr/bin/kill", "kill", NULL);  // Use full path for "kill"
+            } else {
+                execlp(input, input, NULL);  // For other commands
+            }
             // If execlp fails, print an error and exit the child process
             perror("execlp");
             _exit(1);
         } else {
             // Parent process: Wait for the child to complete
-            int status;
-            waitpid(pid, &status, 0);
+            waitpid(pid, &last_status, 0);
         }
     }
 
