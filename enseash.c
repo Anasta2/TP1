@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <time.h>
 
 int main() {
     // Welcome message
@@ -49,21 +50,29 @@ int main() {
 
         if (pid == 0) {
             // Child process: Execute the command
-            // Special case for the "kill" command
-            if (strncmp(input, "kill", 4) == 0) {
-                execlp("/usr/bin/kill", "kill", NULL);  // Use full path for "kill"
-            } else {
-                execlp(input, input, NULL);  // For other commands
-            }
+            execlp(input, input, NULL);
             // If execlp fails, print an error and exit the child process
             perror("execlp");
             _exit(1);
         } else {
-            // Parent process: Wait for the child to complete
+            // Parent process: Measure execution time and wait for the child to complete
+            struct timespec start, end;
+            clock_gettime(CLOCK_MONOTONIC, &start);  // Record start time
+
             waitpid(pid, &last_status, 0);
+
+            clock_gettime(CLOCK_MONOTONIC, &end);  // Record end time
+            long exec_time_ms = (end.tv_sec - start.tv_sec) * 1000 +
+                                (end.tv_nsec - start.tv_nsec) / 1000000;
+
+            // Update prompt with execution time
+            if (WIFEXITED(last_status)) {
+                dprintf(STDOUT_FILENO, "enseash [exit:%d|%ldms] %% ", WEXITSTATUS(last_status), exec_time_ms);
+            } else if (WIFSIGNALED(last_status)) {
+                dprintf(STDOUT_FILENO, "enseash [sign:%d|%ldms] %% ", WTERMSIG(last_status), exec_time_ms);
+            }
         }
     }
 
     return 0;
 }
-
