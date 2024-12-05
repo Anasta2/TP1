@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <fcntl.h>
 #include <stdlib.h>
 #include <time.h>
 
@@ -46,11 +47,22 @@ int main() {
 
         // Parse the input into command and arguments
         char *args[MAX_ARGS] = {NULL};
-        int arg_count = 0;
+        char *file_in = NULL, *file_out = NULL;  // For redirection
+        int arg_count = 0, redirect_in = 0, redirect_out = 0;
 
         char *token = strtok(input, " ");
-        while (token != NULL && arg_count < MAX_ARGS - 1) {
-            args[arg_count++] = token;
+        while (token != NULL) {
+            if (strcmp(token, "<") == 0) {
+                redirect_in = 1;
+                token = strtok(NULL, " ");
+                if (token) file_in = token;
+            } else if (strcmp(token, ">") == 0) {
+                redirect_out = 1;
+                token = strtok(NULL, " ");
+                if (token) file_out = token;
+            } else {
+                args[arg_count++] = token;
+            }
             token = strtok(NULL, " ");
         }
         args[arg_count] = NULL;  // Null-terminate the argument list
@@ -63,7 +75,27 @@ int main() {
         }
 
         if (pid == 0) {
-            // Child process: Execute the command with arguments
+            // Child process: Set up redirections if specified
+            if (redirect_in && file_in) {
+                int fd_in = open(file_in, O_RDONLY);
+                if (fd_in == -1) {
+                    perror("open");
+                    _exit(1);
+                }
+                dup2(fd_in, STDIN_FILENO);  // Redirect stdin
+                close(fd_in);
+            }
+            if (redirect_out && file_out) {
+                int fd_out = open(file_out, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+                if (fd_out == -1) {
+                    perror("open");
+                    _exit(1);
+                }
+                dup2(fd_out, STDOUT_FILENO);  // Redirect stdout
+                close(fd_out);
+            }
+
+            // Execute the command with arguments
             execvp(args[0], args);
             // If execvp fails, print an error and exit the child process
             perror("execvp");
