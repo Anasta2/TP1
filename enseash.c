@@ -3,7 +3,10 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <stdlib.h>
 #include <time.h>
+
+#define MAX_ARGS 100  // Maximum number of arguments
 
 int main() {
     // Welcome message
@@ -14,7 +17,7 @@ int main() {
     int last_status = 0;  // To store the status of the last command
 
     while (1) {
-        // Display prompt with return code or signal
+        // Display prompt with return code, signal, and execution time
         if (WIFEXITED(last_status)) {
             dprintf(STDOUT_FILENO, "enseash [exit:%d] %% ", WEXITSTATUS(last_status));
         } else if (WIFSIGNALED(last_status)) {
@@ -41,6 +44,17 @@ int main() {
             break;
         }
 
+        // Parse the input into command and arguments
+        char *args[MAX_ARGS] = {NULL};
+        int arg_count = 0;
+
+        char *token = strtok(input, " ");
+        while (token != NULL && arg_count < MAX_ARGS - 1) {
+            args[arg_count++] = token;
+            token = strtok(NULL, " ");
+        }
+        args[arg_count] = NULL;  // Null-terminate the argument list
+
         // Fork a new process to execute the command
         pid_t pid = fork();
         if (pid == -1) {
@@ -49,10 +63,10 @@ int main() {
         }
 
         if (pid == 0) {
-            // Child process: Execute the command
-            execlp(input, input, NULL);
-            // If execlp fails, print an error and exit the child process
-            perror("execlp");
+            // Child process: Execute the command with arguments
+            execvp(args[0], args);
+            // If execvp fails, print an error and exit the child process
+            perror("execvp");
             _exit(1);
         } else {
             // Parent process: Measure execution time and wait for the child to complete
@@ -76,3 +90,4 @@ int main() {
 
     return 0;
 }
+
