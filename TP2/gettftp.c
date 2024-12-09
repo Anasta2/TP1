@@ -72,7 +72,52 @@ int main(int argc, char *argv[]) {
 
     printf("RRQ sent for file: %s\n", filename);
 
+    // Open a file to write the received data
+    FILE *file = fopen(filename, "wb");
+    if (!file) {
+        perror("Failed to open file for writing");
+        close(sockfd);
+        return EXIT_FAILURE;
+    }
+
+    // Receive a single DATA packet
+    int recv_len = recv(sockfd, buffer, BUFFER_SIZE, 0);
+    if (recv_len < 0) {
+        perror("Failed to receive DATA packet");
+        fclose(file);
+        close(sockfd);
+        return EXIT_FAILURE;
+    }
+
+    // Validate the DATA packet
+    if (buffer[1] != 0x03) {  // Opcode (3 for DATA)
+        fprintf(stderr, "Unexpected packet received\n");
+        fclose(file);
+        close(sockfd);
+        return EXIT_FAILURE;
+    }
+
+    int block_num = (buffer[2] << 8) | buffer[3];
+    printf("Received DATA packet, block: %d, size: %d bytes\n", block_num, recv_len - 4);
+
+    // Write data to the file
+    fwrite(buffer + 4, 1, recv_len - 4, file);
+
+    // Send an ACK for the received DATA packet
+    char ack[4] = {0x00, 0x04, buffer[2], buffer[3]};
+    if (send(sockfd, ack, sizeof(ack), 0) < 0) {
+        perror("Failed to send ACK");
+        fclose(file);
+        close(sockfd);
+        return EXIT_FAILURE;
+    }
+
+    printf("ACK sent for block: %d\n", block_num);
+
+    fclose(file);
     close(sockfd);
+    printf("File transfer complete for single packet.\n");
+
     return EXIT_SUCCESS;
 }
 
