@@ -7,15 +7,18 @@
 
 #define TFTP_PORT 69
 #define BUFFER_SIZE 516  // TFTP packets are max 516 bytes
+#define DATA_SIZE 512    // Max data size for a TFTP data packet
 
 int main(int argc, char *argv[]) {
     if (argc != 3) {
-        fprintf(stderr, "Usage: %s <host> <file>\n", argv[0]);
+        fprintf(stderr, "Usage: %s <server> <file>\n", argv[0]);
         return EXIT_FAILURE;
     }
 
-    const char *host = argv[1];
+    const char *server = argv[1];
     const char *filename = argv[2];
+
+    printf("Server: %s, File: %s\n", server, filename);
 
     // Resolve the server address
     struct addrinfo hints, *res;
@@ -23,8 +26,8 @@ int main(int argc, char *argv[]) {
     hints.ai_family = AF_INET;  // IPv4
     hints.ai_socktype = SOCK_DGRAM;  // UDP socket
 
-    if (getaddrinfo(host, NULL, &hints, &res) != 0) {
-        perror("Failed to resolve host");
+    if (getaddrinfo(server, NULL, &hints, &res) != 0) {
+        perror("Failed to resolve server address");
         return EXIT_FAILURE;
     }
 
@@ -62,15 +65,6 @@ int main(int argc, char *argv[]) {
     printf("RRQ sent for file: %s\n", filename);
 
     // Receive the server's response
-    socklen_t addr_len = sizeof(server_addr);
-    int recv_len = recvfrom(sockfd, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&server_addr, &addr_len);
-    if (recv_len < 0) {
-        perror("Failed to receive response");
-        close(sockfd);
-        return EXIT_FAILURE;
-    }
-
-    // Save the received data to a file
     FILE *file = fopen(filename, "wb");
     if (!file) {
         perror("Failed to open file for writing");
@@ -78,12 +72,50 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    fwrite(buffer + 4, 1, recv_len - 4, file);  // Skip the 4-byte TFTP header
+    int block_num = 1;  // Expected block number
+    while (1) {
+        // Receive a TFTP DATA packet
+        socklen_t addr_len = sizeof(server_addr);
+        int recv_len = recvfrom(sockfd, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&server_addr, &addr_len);
+        if (recv_len < 0) {
+            perror("Failed to receive DATA packet");
+            break;
+        }
+
+        // Validate the DATA packet
+        if (buffer[1] != 0x03) {  // Opcode (3 for DATA)
+            fprintf(stderr, "Unexpected packet received\n");
+            break;
+        }
+
+        int received_block = (buffer[2] << 8) | buffer[3];
+        if (received_block != block_num) {
+            fprintf(stderr, "Unexpected block number: %d\n", received_block);
+            break;
+        }
+
+        // Write the received data to the file
+        fwrite(buffer + 4, 1, recv_len - 4, file);
+
+        // Send an ACK for the received DATA packet
+        char ack[4] = {0x00, 0x04, buffer[2], buffer[3]};
+        if (sendto(sockfd, ack, sizeof(ack), 0, (struct sockaddr *)&server_addr, addr_len) < 0) {
+            perror("Failed to send ACK");
+            break;
+        }
+
+        printf("ACK sent for block %d\n", block_num);
+
+        block_num++;
+
+        // If the last packet was smaller than 512 bytes, we're done
+        if (recv_len < BUFFER_SIZE) {
+            printf("File transfer complete.\n");
+            break;
+        }
+    }
+
     fclose(file);
-
-    printf("File %s downloaded successfully.\n", filename);
-
     close(sockfd);
     return EXIT_SUCCESS;
 }
-

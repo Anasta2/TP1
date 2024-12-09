@@ -11,12 +11,14 @@
 
 int main(int argc, char *argv[]) {
     if (argc != 3) {
-        fprintf(stderr, "Usage: %s <host> <file>\n", argv[0]);
+        fprintf(stderr, "Usage: %s <server> <file>\n", argv[0]);
         return EXIT_FAILURE;
     }
 
-    const char *host = argv[1];
+    const char *server = argv[1];
     const char *filename = argv[2];
+
+    printf("Server: %s, File: %s\n", server, filename);
 
     // Resolve the server address
     struct addrinfo hints, *res;
@@ -24,8 +26,8 @@ int main(int argc, char *argv[]) {
     hints.ai_family = AF_INET;  // IPv4
     hints.ai_socktype = SOCK_DGRAM;  // UDP socket
 
-    if (getaddrinfo(host, NULL, &hints, &res) != 0) {
-        perror("Failed to resolve host");
+    if (getaddrinfo(server, NULL, &hints, &res) != 0) {
+        perror("Failed to resolve server address");
         return EXIT_FAILURE;
     }
 
@@ -71,13 +73,6 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    // Debugging: Print the received ACK packet
-    printf("Received ACK (%d bytes):\n", recv_len);
-    for (int i = 0; i < recv_len; i++) {
-        printf("%02x ", (unsigned char)buffer[i]);
-    }
-    printf("\n");
-
     // Validate the ACK
     if (buffer[1] != 0x04 || buffer[2] != 0x00 || buffer[3] != 0x00) {
         fprintf(stderr, "Invalid ACK received for WRQ\n");
@@ -121,18 +116,13 @@ int main(int argc, char *argv[]) {
             break;
         }
 
-        // Debugging: Print the received ACK packet
-        printf("Received ACK for block %d (%d bytes):\n", block_num, recv_len);
-        for (int i = 0; i < recv_len; i++) {
-            printf("%02x ", (unsigned char)buffer[i]);
-        }
-        printf("\n");
-
-        // Check the ACK packet
+        // Validate the ACK
         if (buffer[1] != 0x04 || buffer[2] != ((block_num >> 8) & 0xFF) || buffer[3] != (block_num & 0xFF)) {
             fprintf(stderr, "Invalid ACK received for block %d\n", block_num);
             break;
         }
+
+        printf("ACK received for block %d\n", block_num);
 
         block_num++;
 
@@ -146,4 +136,3 @@ int main(int argc, char *argv[]) {
 
     return EXIT_SUCCESS;
 }
-
