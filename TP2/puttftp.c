@@ -34,7 +34,7 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    // Create a UDP socket
+    // Create and connect a UDP socket
     int sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
     if (sockfd < 0) {
         perror("Socket creation failed");
@@ -42,11 +42,15 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    // Store server address for use in sendto and recvfrom
-    struct sockaddr_storage server_addr;
-    socklen_t server_addr_len = res->ai_addrlen;
-    memcpy(&server_addr, res->ai_addr, res->ai_addrlen);
+    if (connect(sockfd, res->ai_addr, res->ai_addrlen) < 0) {
+        perror("Failed to connect socket");
+        freeaddrinfo(res);
+        close(sockfd);
+        return EXIT_FAILURE;
+    }
+
     freeaddrinfo(res);
+    printf("Socket connected to the server.\n");
 
     // Construct a TFTP Write Request (WRQ) packet
     char buffer[BUFFER_SIZE];
@@ -60,7 +64,7 @@ int main(int argc, char *argv[]) {
     wrq_len += strlen("octet") + 1;     // +1 for null terminator
 
     // Send the WRQ packet to the server
-    if (sendto(sockfd, buffer, wrq_len, 0, (struct sockaddr *)&server_addr, server_addr_len) < 0) {
+    if (send(sockfd, buffer, wrq_len, 0) < 0) {
         perror("Failed to send WRQ");
         close(sockfd);
         return EXIT_FAILURE;
@@ -69,7 +73,7 @@ int main(int argc, char *argv[]) {
     printf("WRQ sent for file: %s\n", filename);
 
     // Wait for ACK for WRQ
-    int recv_len = recvfrom(sockfd, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&server_addr, &server_addr_len);
+    int recv_len = recv(sockfd, buffer, BUFFER_SIZE, 0);
     if (recv_len < 0) {
         perror("Failed to receive ACK for WRQ");
         close(sockfd);
@@ -107,13 +111,13 @@ int main(int argc, char *argv[]) {
         buffer[3] = block_num & 0xFF;         // Block number (low byte)
 
         // Send the DATA packet
-        if (sendto(sockfd, buffer, data_len + 4, 0, (struct sockaddr *)&server_addr, server_addr_len) < 0) {
+        if (send(sockfd, buffer, data_len + 4, 0) < 0) {
             perror("Failed to send DATA packet");
             break;
         }
 
         // Wait for ACK
-        recv_len = recvfrom(sockfd, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&server_addr, &server_addr_len);
+        recv_len = recv(sockfd, buffer, BUFFER_SIZE, 0);
         if (recv_len < 0) {
             perror("Failed to receive ACK");
             break;
