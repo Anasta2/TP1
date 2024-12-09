@@ -7,7 +7,6 @@
 
 #define TFTP_PORT 69
 #define BUFFER_SIZE 516  // TFTP packets are max 516 bytes
-#define DATA_SIZE 512    // Max data size for a TFTP data packet
 
 int main(int argc, char *argv[]) {
     if (argc != 3) {
@@ -34,7 +33,7 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    // Create and connect a UDP socket
+    // Create a UDP socket
     int sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
     if (sockfd < 0) {
         perror("Socket creation failed");
@@ -42,6 +41,7 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
+    // Connect the socket to the server
     if (connect(sockfd, res->ai_addr, res->ai_addrlen) < 0) {
         perror("Failed to connect socket");
         freeaddrinfo(res);
@@ -72,75 +72,8 @@ int main(int argc, char *argv[]) {
 
     printf("WRQ sent for file: %s\n", filename);
 
-    // Wait for ACK for WRQ
-    int recv_len = recv(sockfd, buffer, BUFFER_SIZE, 0);
-    if (recv_len < 0) {
-        perror("Failed to receive ACK for WRQ");
-        close(sockfd);
-        return EXIT_FAILURE;
-    }
-
-    // Validate the ACK
-    if (buffer[1] != 0x04 || buffer[2] != 0x00 || buffer[3] != 0x00) {
-        fprintf(stderr, "Invalid ACK received for WRQ\n");
-        close(sockfd);
-        return EXIT_FAILURE;
-    }
-
-    // Open the file to read data
-    FILE *file = fopen(filename, "rb");
-    if (!file) {
-        perror("Failed to open file");
-        close(sockfd);
-        return EXIT_FAILURE;
-    }
-
-    // Send the file data in TFTP DATA packets
-    int block_num = 1;
-    while (1) {
-        int data_len = fread(buffer + 4, 1, DATA_SIZE, file);  // Read up to 512 bytes
-        if (data_len < 0) {
-            perror("Failed to read file");
-            break;
-        }
-
-        // Construct the DATA packet
-        buffer[0] = 0x00;  // Opcode (3 for DATA)
-        buffer[1] = 0x03;
-        buffer[2] = (block_num >> 8) & 0xFF;  // Block number (high byte)
-        buffer[3] = block_num & 0xFF;         // Block number (low byte)
-
-        // Send the DATA packet
-        if (send(sockfd, buffer, data_len + 4, 0) < 0) {
-            perror("Failed to send DATA packet");
-            break;
-        }
-
-        // Wait for ACK
-        recv_len = recv(sockfd, buffer, BUFFER_SIZE, 0);
-        if (recv_len < 0) {
-            perror("Failed to receive ACK");
-            break;
-        }
-
-        // Validate the ACK
-        if (buffer[1] != 0x04 || buffer[2] != ((block_num >> 8) & 0xFF) || buffer[3] != (block_num & 0xFF)) {
-            fprintf(stderr, "Invalid ACK received for block %d\n", block_num);
-            break;
-        }
-
-        printf("ACK received for block %d\n", block_num);
-
-        block_num++;
-
-        // If the last packet was smaller than 512 bytes, we're done
-        if (data_len < DATA_SIZE) break;
-    }
-
-    fclose(file);
+    // Close the socket
     close(sockfd);
-    printf("File %s uploaded successfully.\n", filename);
-
     return EXIT_SUCCESS;
 }
 
