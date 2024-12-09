@@ -7,6 +7,7 @@
 
 #define TFTP_PORT 69
 #define BUFFER_SIZE 516  // TFTP packets are max 516 bytes
+#define DATA_SIZE 512    // Max data size for a TFTP data packet
 
 int main(int argc, char *argv[]) {
     if (argc != 3) {
@@ -80,44 +81,52 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    // Receive a single DATA packet
-    int recv_len = recv(sockfd, buffer, BUFFER_SIZE, 0);
-    if (recv_len < 0) {
-        perror("Failed to receive DATA packet");
-        fclose(file);
-        close(sockfd);
-        return EXIT_FAILURE;
+    int block_num = 1;  // Expected block number
+    while (1) {
+        // Receive a DATA packet
+        int recv_len = recv(sockfd, buffer, BUFFER_SIZE, 0);
+        if (recv_len < 0) {
+            perror("Failed to receive DATA packet");
+            break;
+        }
+
+        // Validate the DATA packet
+        if (buffer[1] != 0x03) {  // Opcode (3 for DATA)
+            fprintf(stderr, "Unexpected packet received\n");
+            break;
+        }
+
+        int received_block = (buffer[2] << 8) | buffer[3];
+        if (received_block != block_num) {
+            fprintf(stderr, "Unexpected block number: %d\n", received_block);
+            break;
+        }
+
+        printf("Received DATA packet, block: %d, size: %d bytes\n", block_num, recv_len - 4);
+
+        // Write data to the file
+        fwrite(buffer + 4, 1, recv_len - 4, file);
+
+        // Send an ACK for the received DATA packet
+        char ack[4] = {0x00, 0x04, buffer[2], buffer[3]};
+        if (send(sockfd, ack, sizeof(ack), 0) < 0) {
+            perror("Failed to send ACK");
+            break;
+        }
+
+        printf("ACK sent for block: %d\n", block_num);
+
+        block_num++;
+
+        // If the last packet was smaller than 512 bytes, we're done
+        if (recv_len < BUFFER_SIZE) {
+            printf("File transfer complete.\n");
+            break;
+        }
     }
-
-    // Validate the DATA packet
-    if (buffer[1] != 0x03) {  // Opcode (3 for DATA)
-        fprintf(stderr, "Unexpected packet received\n");
-        fclose(file);
-        close(sockfd);
-        return EXIT_FAILURE;
-    }
-
-    int block_num = (buffer[2] << 8) | buffer[3];
-    printf("Received DATA packet, block: %d, size: %d bytes\n", block_num, recv_len - 4);
-
-    // Write data to the file
-    fwrite(buffer + 4, 1, recv_len - 4, file);
-
-    // Send an ACK for the received DATA packet
-    char ack[4] = {0x00, 0x04, buffer[2], buffer[3]};
-    if (send(sockfd, ack, sizeof(ack), 0) < 0) {
-        perror("Failed to send ACK");
-        fclose(file);
-        close(sockfd);
-        return EXIT_FAILURE;
-    }
-
-    printf("ACK sent for block: %d\n", block_num);
 
     fclose(file);
     close(sockfd);
-    printf("File transfer complete for single packet.\n");
-
     return EXIT_SUCCESS;
 }
 
